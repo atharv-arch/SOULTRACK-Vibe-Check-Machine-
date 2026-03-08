@@ -1,0 +1,1674 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOULTRACK — Vibe Check Machine</title>
+    <meta name="description" content="AI-powered mood analysis and vibe generation with TensorFlow.js and Claude API">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box
+        }
+
+        :root {
+            --bg: #0f0f0f;
+            --sidebar: #121212;
+            --card: #1a1a1a;
+            --card-hover: #222;
+            --accent: #1db954;
+            --accent2: #1ed760;
+            --text: #fff;
+            --text-dim: #a0a0a0;
+            --text-muted: #666;
+            --border: #2a2a2a;
+            --player-bg: #181818;
+            --radius: 12px
+        }
+
+        .light-mode {
+            --bg: #f5f5f5;
+            --sidebar: #e8e8e8;
+            --card: #ffffff;
+            --card-hover: #f0f0f0;
+            --text: #111;
+            --text-dim: #555;
+            --text-muted: #888;
+            --border: #ddd;
+            --player-bg: #e0e0e0
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            overflow: hidden;
+            height: 100vh;
+            transition: background .4s, color .4s
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none
+        }
+
+        /* LAYOUT */
+        .app {
+            display: flex;
+            height: 100vh;
+            position: relative
+        }
+
+        .sidebar {
+            width: 240px;
+            min-width: 240px;
+            background: var(--sidebar);
+            display: flex;
+            flex-direction: column;
+            padding: 24px 16px;
+            z-index: 10;
+            transition: background .4s
+        }
+
+        .main {
+            flex: 1;
+            overflow-y: auto;
+            padding: 32px 40px 120px;
+            position: relative
+        }
+
+        .player-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 80px;
+            background: var(--player-bg);
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            z-index: 20;
+            transition: background .4s
+        }
+
+        /* SIDEBAR */
+        .logo {
+            font-size: 24px;
+            font-weight: 900;
+            letter-spacing: 2px;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, var(--accent), #1ed760);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent
+        }
+
+        .logo-sub {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-bottom: 32px;
+            letter-spacing: 1px
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-dim);
+            transition: all .2s;
+            margin-bottom: 4px
+        }
+
+        .nav-item:hover,
+        .nav-item.active {
+            background: var(--card);
+            color: var(--text)
+        }
+
+        .nav-item.active {
+            color: var(--accent)
+        }
+
+        .nav-item span.icon {
+            font-size: 20px
+        }
+
+        .sidebar-mood {
+            margin-top: auto;
+            padding: 16px;
+            background: var(--card);
+            border-radius: var(--radius);
+            text-align: center
+        }
+
+        .sidebar-mood-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px
+        }
+
+        .sidebar-mood-bar {
+            height: 6px;
+            background: #333;
+            border-radius: 3px;
+            overflow: hidden
+        }
+
+        .sidebar-mood-fill {
+            height: 100%;
+            width: 50%;
+            background: var(--accent);
+            border-radius: 3px;
+            transition: width .5s, background .5s
+        }
+
+        .sidebar-mood-val {
+            font-size: 20px;
+            font-weight: 700;
+            margin-top: 6px
+        }
+
+        /* PAGES */
+        .page {
+            display: none;
+            animation: fadeIn .4s ease
+        }
+
+        .page.active {
+            display: block
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(12px)
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0)
+            }
+        }
+
+        /* HOME */
+        .greeting {
+            font-size: 42px;
+            font-weight: 800;
+            margin-bottom: 8px
+        }
+
+        .greeting-sub {
+            color: var(--text-dim);
+            margin-bottom: 32px;
+            font-size: 16px
+        }
+
+        .mood-input-wrap {
+            position: relative;
+            margin-bottom: 24px
+        }
+
+        .mood-input {
+            width: 100%;
+            min-height: 100px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+            color: var(--text);
+            font-family: 'Outfit';
+            font-size: 16px;
+            resize: vertical;
+            transition: border-color .3s
+        }
+
+        .mood-input:focus {
+            outline: none;
+            border-color: var(--accent)
+        }
+
+        .mood-meter {
+            margin-bottom: 24px
+        }
+
+        .mood-meter-label {
+            font-size: 13px;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between
+        }
+
+        .mood-meter-track {
+            height: 10px;
+            background: #222;
+            border-radius: 5px;
+            overflow: hidden;
+            position: relative
+        }
+
+        .mood-meter-fill {
+            height: 100%;
+            width: 50%;
+            background: linear-gradient(90deg, #e74c3c, #f39c12, #2ecc71);
+            border-radius: 5px;
+            transition: width .3s
+        }
+
+        .mood-meter-dot {
+            position: absolute;
+            top: -3px;
+            width: 16px;
+            height: 16px;
+            background: #fff;
+            border-radius: 50%;
+            box-shadow: 0 0 8px rgba(0, 0, 0, .5);
+            transition: left .3s;
+            transform: translateX(-50%)
+        }
+
+        .btn-vibe {
+            background: linear-gradient(135deg, var(--accent), #1ed760);
+            color: #000;
+            border: none;
+            padding: 16px 40px;
+            border-radius: 50px;
+            font-family: 'Outfit';
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            letter-spacing: 1px;
+            transition: transform .2s, box-shadow .2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px
+        }
+
+        .btn-vibe:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 30px rgba(29, 185, 84, .3)
+        }
+
+        .btn-vibe:disabled {
+            opacity: .5;
+            cursor: not-allowed;
+            transform: none
+        }
+
+        .btn-vibe .spinner {
+            display: none;
+            width: 18px;
+            height: 18px;
+            border: 2px solid #000;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin .8s linear infinite
+        }
+
+        .btn-vibe.loading .spinner {
+            display: inline-block
+        }
+
+        .btn-vibe.loading .btn-text {
+            display: none
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg)
+            }
+        }
+
+        /* VIBE CARD */
+        .vibe-card {
+            margin-top: 32px;
+            background: var(--card);
+            border-radius: 16px;
+            padding: 28px;
+            display: none;
+            animation: slideUp .5s ease
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(24px)
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0)
+            }
+        }
+
+        .vibe-card.show {
+            display: block
+        }
+
+        .vibe-card-inner {
+            display: flex;
+            gap: 24px;
+            align-items: flex-start
+        }
+
+        .vibe-album {
+            width: 160px;
+            height: 160px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 64px;
+            flex-shrink: 0;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, .4)
+        }
+
+        .vibe-info {
+            flex: 1
+        }
+
+        .vibe-title {
+            font-size: 28px;
+            font-weight: 800;
+            margin-bottom: 4px
+        }
+
+        .vibe-genre {
+            color: var(--text-dim);
+            font-size: 14px;
+            margin-bottom: 12px
+        }
+
+        .vibe-desc {
+            color: var(--text-dim);
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 16px
+        }
+
+        .vibe-tags {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 16px
+        }
+
+        .vibe-tag {
+            background: #ffffff15;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500
+        }
+
+        .vibe-energy {
+            display: flex;
+            align-items: center;
+            gap: 12px
+        }
+
+        .vibe-energy-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            min-width: 50px
+        }
+
+        .vibe-energy-track {
+            flex: 1;
+            height: 6px;
+            background: #333;
+            border-radius: 3px;
+            overflow: hidden
+        }
+
+        .vibe-energy-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 1s ease
+        }
+
+        .vibe-bpm {
+            font-size: 13px;
+            color: var(--text-dim);
+            margin-top: 8px
+        }
+
+        /* ANALYTICS */
+        .chart-container {
+            background: var(--card);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin-bottom: 24px
+        }
+
+        .chart-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 16px
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-top: 24px
+        }
+
+        .stat-card {
+            background: var(--card);
+            border-radius: var(--radius);
+            padding: 20px;
+            text-align: center
+        }
+
+        .stat-val {
+            font-size: 32px;
+            font-weight: 800;
+            color: var(--accent)
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 1px
+        }
+
+        /* PLAYLIST */
+        .playlist-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px
+        }
+
+        .playlist-item {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background .2s
+        }
+
+        .playlist-item:hover {
+            background: var(--card-hover)
+        }
+
+        .playlist-thumb {
+            width: 48px;
+            height: 48px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            flex-shrink: 0
+        }
+
+        .playlist-info {
+            flex: 1
+        }
+
+        .playlist-title {
+            font-size: 15px;
+            font-weight: 600
+        }
+
+        .playlist-genre {
+            font-size: 12px;
+            color: var(--text-dim)
+        }
+
+        .playlist-bpm {
+            font-size: 13px;
+            color: var(--text-muted);
+            min-width: 60px;
+            text-align: right
+        }
+
+        .playlist-energy-badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #000
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted)
+        }
+
+        .empty-state .icon {
+            font-size: 48px;
+            margin-bottom: 16px
+        }
+
+        .empty-state p {
+            font-size: 16px
+        }
+
+        /* PREDICTOR */
+        .gauge-wrap {
+            display: flex;
+            justify-content: center;
+            padding: 40px 0
+        }
+
+        .gauge-container {
+            position: relative;
+            width: 220px;
+            height: 220px
+        }
+
+        .gauge-container canvas {
+            width: 220px;
+            height: 220px
+        }
+
+        .gauge-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center
+        }
+
+        .gauge-val {
+            font-size: 48px;
+            font-weight: 800
+        }
+
+        .gauge-label {
+            font-size: 12px;
+            color: var(--text-muted)
+        }
+
+        .training-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 24px
+        }
+
+        .training-table th,
+        .training-table td {
+            padding: 10px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px
+        }
+
+        .training-table th {
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-size: 11px
+        }
+
+        .training-msg {
+            text-align: center;
+            padding: 32px;
+            font-size: 16px;
+            color: var(--text-dim)
+        }
+
+        .training-msg .brain {
+            font-size: 48px;
+            display: block;
+            margin-bottom: 16px
+        }
+
+        /* SETTINGS */
+        .setting-group {
+            background: var(--card);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin-bottom: 16px
+        }
+
+        .setting-group h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 16px
+        }
+
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border)
+        }
+
+        .setting-row:last-child {
+            border: none
+        }
+
+        .setting-label {
+            font-size: 14px
+        }
+
+        .setting-desc {
+            font-size: 12px;
+            color: var(--text-muted)
+        }
+
+        .text-input {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: var(--text);
+            font-family: 'Outfit';
+            font-size: 14px;
+            width: 300px;
+            transition: border-color .3s
+        }
+
+        .text-input:focus {
+            outline: none;
+            border-color: var(--accent)
+        }
+
+        .toggle {
+            width: 48px;
+            height: 26px;
+            background: #333;
+            border-radius: 13px;
+            position: relative;
+            cursor: pointer;
+            transition: background .3s
+        }
+
+        .toggle.on {
+            background: var(--accent)
+        }
+
+        .toggle::after {
+            content: '';
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 20px;
+            height: 20px;
+            background: #fff;
+            border-radius: 50%;
+            transition: transform .3s
+        }
+
+        .toggle.on::after {
+            transform: translateX(22px)
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: #fff;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 8px;
+            font-family: 'Outfit';
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity .2s
+        }
+
+        .btn-danger:hover {
+            opacity: .8
+        }
+
+        .btn-sm {
+            background: var(--card);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-family: 'Outfit';
+            font-size: 13px;
+            cursor: pointer;
+            transition: all .2s
+        }
+
+        .btn-sm:hover {
+            background: var(--card-hover);
+            border-color: var(--accent)
+        }
+
+        .app-info {
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.8
+        }
+
+        /* PLAYER BAR */
+        .player-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1
+        }
+
+        .player-thumb {
+            width: 48px;
+            height: 48px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px
+        }
+
+        .player-title {
+            font-size: 14px;
+            font-weight: 600
+        }
+
+        .player-genre {
+            font-size: 11px;
+            color: var(--text-muted)
+        }
+
+        .player-center {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            flex: 2
+        }
+
+        .player-controls {
+            display: flex;
+            align-items: center;
+            gap: 20px
+        }
+
+        .player-btn {
+            background: none;
+            border: none;
+            color: var(--text);
+            font-size: 18px;
+            cursor: pointer;
+            opacity: .7;
+            transition: opacity .2s
+        }
+
+        .player-btn:hover {
+            opacity: 1
+        }
+
+        .player-btn.play {
+            width: 36px;
+            height: 36px;
+            background: var(--text);
+            color: var(--bg);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            opacity: 1
+        }
+
+        .progress-bar {
+            width: 100%;
+            max-width: 400px;
+            height: 4px;
+            background: #333;
+            border-radius: 2px;
+            overflow: hidden
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            border-radius: 2px;
+            width: 0;
+            transition: width .1s linear
+        }
+
+        .player-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex: 1;
+            justify-content: flex-end
+        }
+
+        .equalizer {
+            display: flex;
+            align-items: flex-end;
+            gap: 3px;
+            height: 24px
+        }
+
+        .eq-bar {
+            width: 4px;
+            background: var(--accent);
+            border-radius: 2px;
+            transition: height .15s
+        }
+
+        .player-bpm {
+            font-size: 13px;
+            color: var(--text-dim);
+            font-weight: 600
+        }
+
+        .player-empty {
+            color: var(--text-muted);
+            font-size: 13px
+        }
+
+        /* PARTICLES */
+        #particles-canvas {
+            position: fixed;
+            top: 0;
+            left: 240px;
+            right: 0;
+            bottom: 80px;
+            z-index: 0;
+            pointer-events: none
+        }
+
+        .main {
+            z-index: 1;
+            position: relative
+        }
+
+        /* VIBE BATTLE */
+        .battle-wrap {
+            display: flex;
+            gap: 24px;
+            margin-top: 24px
+        }
+
+        .battle-card {
+            flex: 1;
+            background: var(--card);
+            border-radius: var(--radius);
+            padding: 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: transform .2s, box-shadow .2s;
+            border: 2px solid transparent
+        }
+
+        .battle-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, .3)
+        }
+
+        .battle-card.winner {
+            border-color: var(--accent)
+        }
+
+        .battle-vs {
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            padding: 0 8px
+        }
+
+        /* STREAK */
+        .streak-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: linear-gradient(135deg, #ff6b35, #f7c948);
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #000;
+            margin-bottom: 24px
+        }
+
+        /* SCROLL */
+        .main::-webkit-scrollbar {
+            width: 8px
+        }
+
+        .main::-webkit-scrollbar-track {
+            background: transparent
+        }
+
+        .main::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 4px
+        }
+
+        .main::-webkit-scrollbar-thumb:hover {
+            background: #444
+        }
+
+        /* PAGE TITLE */
+        .page-title {
+            font-size: 28px;
+            font-weight: 800;
+            margin-bottom: 24px
+        }
+
+        /* TOAST */
+        .toast {
+            position: fixed;
+            bottom: 100px;
+            right: 24px;
+            background: var(--accent);
+            color: #000;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            z-index: 100;
+            animation: toastIn .3s ease, toastOut .3s ease 2.7s forwards
+        }
+
+        @keyframes toastIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px)
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0)
+            }
+        }
+
+        @keyframes toastOut {
+            from {
+                opacity: 1
+            }
+
+            to {
+                opacity: 0
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- PARTICLES CANVAS -->
+    <canvas id="particles-canvas"></canvas>
+    <div class="app">
+        <!-- SIDEBAR -->
+        <div class="sidebar">
+            <div class="logo">SOULTRACK</div>
+            <div class="logo-sub">VIBE CHECK MACHINE</div>
+            <nav>
+                <div class="nav-item active" onclick="navigate('home')" id="nav-home"><span class="icon">🏠</span>Home
+                </div>
+                <div class="nav-item" onclick="navigate('analytics')" id="nav-analytics"><span
+                        class="icon">📊</span>Analytics</div>
+                <div class="nav-item" onclick="navigate('playlist')" id="nav-playlist"><span class="icon">🎵</span>My
+                    Vibes</div>
+                <div class="nav-item" onclick="navigate('predictor')" id="nav-predictor"><span
+                        class="icon">🧠</span>Predictor</div>
+                <div class="nav-item" onclick="navigate('settings')" id="nav-settings"><span
+                        class="icon">⚙️</span>Settings</div>
+            </nav>
+            <div class="sidebar-mood">
+                <div class="sidebar-mood-label">Mood Score</div>
+                <div class="sidebar-mood-bar">
+                    <div class="sidebar-mood-fill" id="sidebar-mood-fill"></div>
+                </div>
+                <div class="sidebar-mood-val" id="sidebar-mood-val">0.00</div>
+            </div>
+        </div>
+
+        <!-- MAIN CONTENT -->
+        <div class="main">
+            <!-- PAGE 1: HOME -->
+            <div class="page active" id="page-home">
+                <div class="streak-badge" id="streak-badge" style="display:none">🔥 <span id="streak-count">0</span> day
+                    streak</div>
+                <h1 class="greeting">What's your vibe today?</h1>
+                <p class="greeting-sub">Type how you're feeling and let AI decode your energy ✦</p>
+                <div class="mood-input-wrap">
+                    <textarea class="mood-input" id="mood-input" placeholder="I'm feeling..."></textarea>
+                </div>
+                <div class="mood-meter" id="mood-meter-home">
+                    <div class="mood-meter-label"><span>Negative</span><span>Mood Score</span><span>Positive</span>
+                    </div>
+                    <div class="mood-meter-track">
+                        <div class="mood-meter-fill" id="mood-meter-fill"></div>
+                        <div class="mood-meter-dot" id="mood-meter-dot" style="left:50%"></div>
+                    </div>
+                </div>
+                <button class="btn-vibe" id="btn-vibe" onclick="checkVibe()"><span class="btn-text">CHECK MY VIBE
+                        ✦</span><span class="spinner"></span></button>
+                <div class="vibe-card" id="vibe-card">
+                    <div class="vibe-card-inner">
+                        <div class="vibe-album" id="vibe-album">🎵</div>
+                        <div class="vibe-info">
+                            <div class="vibe-title" id="vibe-title"></div>
+                            <div class="vibe-genre" id="vibe-genre"></div>
+                            <div class="vibe-desc" id="vibe-desc"></div>
+                            <div class="vibe-tags" id="vibe-tags"></div>
+                            <div class="vibe-energy"><span class="vibe-energy-label">Energy</span>
+                                <div class="vibe-energy-track">
+                                    <div class="vibe-energy-fill" id="vibe-energy-fill"></div>
+                                </div>
+                            </div>
+                            <div class="vibe-bpm" id="vibe-bpm"></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- VIBE BATTLE -->
+                <div id="battle-section" style="margin-top:40px;display:none">
+                    <h2 class="page-title" style="font-size:22px">⚔️ Vibe Battle</h2>
+                    <p style="color:var(--text-dim);margin-bottom:16px;font-size:14px">Two vibes enter, one wins — pick
+                        the one that matches your mood!</p>
+                    <div class="battle-wrap" id="battle-wrap"></div>
+                </div>
+            </div>
+
+            <!-- PAGE 2: ANALYTICS -->
+            <div class="page" id="page-analytics">
+                <h1 class="page-title">📊 Mood Analytics</h1>
+                <div class="chart-container">
+                    <div class="chart-title">Energy Levels</div><canvas id="energy-chart" width="700"
+                        height="260"></canvas>
+                </div>
+                <div class="chart-container">
+                    <div class="chart-title">Mood Score Trend</div><canvas id="mood-chart" width="700"
+                        height="200"></canvas>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-val" id="stat-avg-bpm">—</div>
+                        <div class="stat-label">Avg BPM</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-val" id="stat-common-mood">—</div>
+                        <div class="stat-label">Top Mood</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-val" id="stat-highest-energy">—</div>
+                        <div class="stat-label">Peak Energy</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PAGE 3: PLAYLIST -->
+            <div class="page" id="page-playlist">
+                <div class="playlist-header">
+                    <h1 class="page-title">🎵 My Vibes Playlist</h1>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn-sm" onclick="exportPlaylist()">📥 Export</button>
+                        <button class="btn-danger" onclick="clearPlaylist()"
+                            style="font-size:12px;padding:8px 14px">Clear All</button>
+                    </div>
+                </div>
+                <div id="playlist-list"></div>
+            </div>
+
+            <!-- PAGE 4: PREDICTOR -->
+            <div class="page" id="page-predictor">
+                <h1 class="page-title">🧠 Vibe Predictor</h1>
+                <div id="predictor-content"></div>
+            </div>
+
+            <!-- PAGE 5: SETTINGS -->
+            <div class="page" id="page-settings">
+                <h1 class="page-title">⚙️ Settings</h1>
+                <div class="setting-group">
+                    <h3>Claude API Key</h3>
+                    <div class="setting-row">
+                        <div>
+                            <div class="setting-label">API Key</div>
+                            <div class="setting-desc">Enter your Anthropic Claude API key</div>
+                        </div><input class="text-input" type="password" id="api-key-input" placeholder="sk-ant-..."
+                            onchange="saveApiKey()">
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <h3>Appearance</h3>
+                    <div class="setting-row">
+                        <div>
+                            <div class="setting-label">Dark / Light Mode</div>
+                            <div class="setting-desc">Toggle between dark and light themes</div>
+                        </div>
+                        <div class="toggle" id="toggle-theme" onclick="toggleTheme()"></div>
+                    </div>
+                    <div class="setting-row">
+                        <div>
+                            <div class="setting-label">Show Mood Meter</div>
+                            <div class="setting-desc">Show mood score on home page</div>
+                        </div>
+                        <div class="toggle on" id="toggle-meter" onclick="toggleMeter()"></div>
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <h3>Data</h3>
+                    <div class="setting-row">
+                        <div>
+                            <div class="setting-label">Clear All History</div>
+                            <div class="setting-desc">Remove all saved vibes and settings</div>
+                        </div><button class="btn-danger" onclick="clearAllHistory()">Clear All History</button>
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <h3>About</h3>
+                    <div class="app-info">SOULTRACK — Vibe Check Machine v1.0<br>Built with Claude AI +
+                        TensorFlow.js<br>© 2026 SOULTRACK</div>
+                </div>
+            </div>
+        </div><!-- end main -->
+
+        <!-- BOTTOM PLAYER BAR -->
+        <div class="player-bar">
+            <div class="player-left" id="player-left"><span class="player-empty">No vibe playing</span></div>
+            <div class="player-center">
+                <div class="player-controls">
+                    <button class="player-btn" onclick="playerPrev()">⏮</button>
+                    <button class="player-btn play" id="player-play-btn" onclick="playerToggle()">▶</button>
+                    <button class="player-btn" onclick="playerNext()">⏭</button>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+            </div>
+            <div class="player-right">
+                <div class="equalizer" id="equalizer">
+                    <div class="eq-bar" style="height:8px"></div>
+                    <div class="eq-bar" style="height:14px"></div>
+                    <div class="eq-bar" style="height:10px"></div>
+                    <div class="eq-bar" style="height:18px"></div>
+                    <div class="eq-bar" style="height:6px"></div>
+                </div>
+                <div class="player-bpm" id="player-bpm-display"></div>
+            </div>
+        </div>
+    </div><!-- end app -->
+
+    <script>
+        // ==================== STATE ====================
+        let currentPage = 'home';
+        let currentMoodScore = 0;
+        let vibeHistory = JSON.parse(localStorage.getItem('vibeHistory') || '[]');
+        let currentVibe = null;
+        let playerPlaying = false;
+        let playerInterval = null;
+        let progressVal = 0;
+        let eqInterval = null;
+        let particlesBPM = 80;
+        let battleVibes = [];
+
+        // ==================== MOOD KEYWORDS ====================
+        const moodKeywords = {
+            happy: 1, excited: 0.9, amazing: 0.95, fantastic: 0.9, great: 0.8,
+            good: 0.6, calm: 0.5, peaceful: 0.55, relaxed: 0.4, chill: 0.35,
+            okay: 0.1, meh: -0.1, bored: -0.2, tired: -0.4, exhausted: -0.6,
+            sad: -0.8, depressed: -0.95, angry: -0.85, anxious: -0.6, stressed: -0.7,
+            lonely: -0.7, frustrated: -0.65, hopeful: 0.7, love: 0.9, grateful: 0.8,
+            energetic: 0.85, motivated: 0.75, inspired: 0.8, confused: -0.3, scared: -0.7
+        };
+
+        // ==================== ROUTER ====================
+        function navigate(page) {
+            currentPage = page;
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById('page-' + page).classList.add('active');
+            document.getElementById('nav-' + page).classList.add('active');
+            // Page-specific init
+            if (page === 'analytics') renderAnalytics();
+            if (page === 'playlist') renderPlaylist();
+            if (page === 'predictor') runPredictor();
+            if (page === 'settings') loadSettings();
+        }
+
+        // ==================== TF.js MOOD CLASSIFIER ====================
+        function calculateMoodScore(text) {
+            if (!text.trim()) return 0;
+            const words = text.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/);
+            const scores = [];
+            words.forEach(w => { if (moodKeywords[w] !== undefined) scores.push(moodKeywords[w]); });
+            if (scores.length === 0) return 0;
+            try {
+                const t = tf.tensor1d(scores);
+                const mean = tf.mean(t).dataSync()[0];
+                t.dispose();
+                return Math.max(-1, Math.min(1, mean));
+            } catch (e) { return 0; }
+        }
+
+        function updateMoodDisplay(score) {
+            currentMoodScore = score;
+            const pct = ((score + 1) / 2) * 100;
+            const meterFill = document.getElementById('mood-meter-fill');
+            const meterDot = document.getElementById('mood-meter-dot');
+            const sidebarFill = document.getElementById('sidebar-mood-fill');
+            const sidebarVal = document.getElementById('sidebar-mood-val');
+            if (meterFill) meterFill.style.width = pct + '%';
+            if (meterDot) meterDot.style.left = pct + '%';
+            if (sidebarFill) { sidebarFill.style.width = pct + '%'; sidebarFill.style.background = score > 0.3 ? '#1db954' : score > -0.3 ? '#f39c12' : '#e74c3c'; }
+            if (sidebarVal) sidebarVal.textContent = score.toFixed(2);
+        }
+
+        // Live mood scoring on input
+        document.getElementById('mood-input').addEventListener('input', function () {
+            const score = calculateMoodScore(this.value);
+            updateMoodDisplay(score);
+        });
+
+        // ==================== CLAUDE API ====================
+        async function callClaudeAPI(userText, moodScore) {
+            const apiKey = localStorage.getItem('claudeApiKey') || '';
+            if (!apiKey) { showToast('⚠️ Enter your Claude API key in Settings first!'); return null; }
+            const prompt = `You are a creative AI that generates music vibes. The user said: "${userText}". Their mood score is ${moodScore.toFixed(2)} on a scale of -1 (very negative) to +1 (very positive). Generate a unique vibe as JSON with these fields: title (creative vibe name), genre (music genre), bpm (number 60-180), energy (number 0-100), color1 (hex), color2 (hex), emoji (single emoji), description (2 sentences max), mood_tags (array of 3-4 mood tags). Return ONLY valid JSON, no markdown.`;
+            try {
+                const resp = await fetch('https://api.anthropic.com/v1/messages', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+                    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 300, messages: [{ role: 'user', content: prompt }] })
+                });
+                const data = await resp.json();
+                if (data.error) { showToast('API Error: ' + (data.error.message || 'Unknown')); return null; }
+                const text = data.content[0].text;
+                try { return JSON.parse(text); } catch (e) {
+                    const match = text.match(/\{[\s\S]*\}/);
+                    if (match) return JSON.parse(match[0]);
+                    throw e;
+                }
+            } catch (e) { showToast('❌ API call failed: ' + e.message); return null; }
+        }
+
+        // ==================== CHECK VIBE ====================
+        async function checkVibe() {
+            const input = document.getElementById('mood-input');
+            const btn = document.getElementById('btn-vibe');
+            const text = input.value.trim();
+            if (!text) { showToast('Type something first!'); return; }
+            btn.classList.add('loading'); btn.disabled = true;
+            const score = calculateMoodScore(text);
+            updateMoodDisplay(score);
+            const vibe = await callClaudeAPI(text, score);
+            btn.classList.remove('loading'); btn.disabled = false;
+            if (!vibe) return;
+            vibe.mood_score = score;
+            vibe.timestamp = Date.now();
+            vibe.input = text;
+            currentVibe = vibe;
+            displayVibeCard(vibe);
+            vibeHistory.push(vibe);
+            localStorage.setItem('vibeHistory', JSON.stringify(vibeHistory));
+            updateAccentColor(vibe.color2 || vibe.color1);
+            loadIntoPlayer(vibe);
+            updateStreak();
+            particlesBPM = vibe.bpm || 80;
+            // Generate battle vibes after first vibe
+            if (vibeHistory.length >= 1) generateBattle(text, score);
+        }
+
+        // ==================== DISPLAY VIBE CARD ====================
+        function displayVibeCard(v) {
+            const card = document.getElementById('vibe-card');
+            document.getElementById('vibe-album').style.background = `linear-gradient(135deg, ${v.color1 || '#1db954'}, ${v.color2 || '#191414'})`;
+            document.getElementById('vibe-album').textContent = v.emoji || '🎵';
+            document.getElementById('vibe-title').textContent = v.title || 'Unknown Vibe';
+            document.getElementById('vibe-genre').textContent = v.genre || 'Genre';
+            document.getElementById('vibe-desc').textContent = v.description || '';
+            const tagsEl = document.getElementById('vibe-tags');
+            tagsEl.innerHTML = (v.mood_tags || []).map(t => `<span class="vibe-tag">${t}</span>`).join('');
+            const energyFill = document.getElementById('vibe-energy-fill');
+            energyFill.style.width = (v.energy || 50) + '%';
+            energyFill.style.background = `linear-gradient(90deg, ${v.color1 || '#1db954'}, ${v.color2 || '#1ed760'})`;
+            document.getElementById('vibe-bpm').textContent = `♫ ${v.bpm || 120} BPM`;
+            card.classList.add('show');
+        }
+
+        // ==================== PLAYER BAR ====================
+        function loadIntoPlayer(v) {
+            const left = document.getElementById('player-left');
+            left.innerHTML = `<div class="player-thumb" style="background:linear-gradient(135deg,${v.color1 || '#1db954'},${v.color2 || '#191414'})">${v.emoji || '🎵'}</div><div><div class="player-title">${v.title || 'Vibe'}</div><div class="player-genre">${v.genre || ''}</div></div>`;
+            document.getElementById('player-bpm-display').textContent = (v.bpm || 120) + ' BPM';
+            startPlayer();
+        }
+
+        function startPlayer() {
+            playerPlaying = true;
+            document.getElementById('player-play-btn').textContent = '⏸';
+            progressVal = 0;
+            clearInterval(playerInterval);
+            playerInterval = setInterval(() => {
+                progressVal += 0.3;
+                if (progressVal > 100) progressVal = 0;
+                document.getElementById('progress-fill').style.width = progressVal + '%';
+            }, 100);
+            startEqualizer();
+        }
+
+        function stopPlayer() {
+            playerPlaying = false;
+            document.getElementById('player-play-btn').textContent = '▶';
+            clearInterval(playerInterval);
+            stopEqualizer();
+        }
+
+        function playerToggle() { playerPlaying ? stopPlayer() : (currentVibe && startPlayer()); }
+        function playerPrev() { if (vibeHistory.length > 1) { const i = Math.max(0, vibeHistory.indexOf(currentVibe) - 1); currentVibe = vibeHistory[i]; loadIntoPlayer(currentVibe); displayVibeCard(currentVibe); } }
+        function playerNext() { if (vibeHistory.length > 1) { const i = Math.min(vibeHistory.length - 1, (vibeHistory.indexOf(currentVibe) || 0) + 1); currentVibe = vibeHistory[i]; loadIntoPlayer(currentVibe); displayVibeCard(currentVibe); } }
+
+        // ==================== EQUALIZER ====================
+        function startEqualizer() {
+            const bars = document.querySelectorAll('.eq-bar');
+            clearInterval(eqInterval);
+            eqInterval = setInterval(() => {
+                bars.forEach(b => { b.style.height = (4 + Math.random() * 20) + 'px'; });
+            }, 180);
+        }
+        function stopEqualizer() {
+            clearInterval(eqInterval);
+            document.querySelectorAll('.eq-bar').forEach(b => b.style.height = '4px');
+        }
+
+        // ==================== ANALYTICS (Canvas Charts) ====================
+        function renderAnalytics() {
+            if (vibeHistory.length === 0) return;
+            const last10 = vibeHistory.slice(-10);
+            // Energy bar chart
+            const c1 = document.getElementById('energy-chart');
+            const ctx1 = c1.getContext('2d');
+            const W = c1.width, H = c1.height;
+            ctx1.clearRect(0, 0, W, H);
+            const barW = (W - 80) / last10.length;
+            const maxE = 100;
+            ctx1.fillStyle = '#333'; ctx1.fillRect(40, 0, 1, H - 30); ctx1.fillRect(40, H - 30, W - 40, 1);
+            // Y-axis labels
+            ctx1.fillStyle = '#666'; ctx1.font = '11px Outfit';
+            for (let i = 0; i <= 4; i++) { const y = H - 30 - (i / 4) * (H - 50); ctx1.fillText((i * 25) + '', 8, y + 4); ctx1.fillStyle = '#222'; ctx1.fillRect(41, y, W - 42, 1); ctx1.fillStyle = '#666'; }
+            last10.forEach((v, i) => {
+                const x = 50 + i * barW;
+                const h = ((v.energy || 50) / maxE) * (H - 50);
+                const grad = ctx1.createLinearGradient(x, H - 30 - h, x, H - 30);
+                grad.addColorStop(0, v.color2 || '#1db954'); grad.addColorStop(1, v.color1 || '#191414');
+                ctx1.fillStyle = grad;
+                ctx1.beginPath(); ctx1.roundRect(x, H - 30 - h, barW - 8, h, [4, 4, 0, 0]); ctx1.fill();
+                ctx1.fillStyle = '#888'; ctx1.font = '11px Outfit'; ctx1.fillText('#' + (i + 1), x + barW / 2 - 8, H - 14);
+            });
+            // Mood score line chart
+            const c2 = document.getElementById('mood-chart');
+            const ctx2 = c2.getContext('2d');
+            const W2 = c2.width, H2 = c2.height;
+            ctx2.clearRect(0, 0, W2, H2);
+            ctx2.fillStyle = '#333'; ctx2.fillRect(40, 0, 1, H2 - 30); ctx2.fillRect(40, H2 - 30, W2 - 40, 1);
+            // Zero line
+            const zeroY = H2 / 2;
+            ctx2.strokeStyle = '#444'; ctx2.setLineDash([5, 5]); ctx2.beginPath(); ctx2.moveTo(40, zeroY); ctx2.lineTo(W2, zeroY); ctx2.stroke(); ctx2.setLineDash([]);
+            ctx2.fillStyle = '#666'; ctx2.font = '11px Outfit'; ctx2.fillText('+1', 14, 16); ctx2.fillText('0', 20, zeroY + 4); ctx2.fillText('-1', 14, H2 - 34);
+            if (last10.length > 1) {
+                const stepX = (W2 - 80) / (last10.length - 1);
+                ctx2.beginPath(); ctx2.strokeStyle = '#1db954'; ctx2.lineWidth = 2.5;
+                last10.forEach((v, i) => {
+                    const x = 50 + i * stepX;
+                    const y = H2 / 2 - (v.mood_score || 0) * (H2 / 2 - 20);
+                    i === 0 ? ctx2.moveTo(x, y) : ctx2.lineTo(x, y);
+                });
+                ctx2.stroke();
+                // Dots
+                last10.forEach((v, i) => {
+                    const x = 50 + i * stepX;
+                    const y = H2 / 2 - (v.mood_score || 0) * (H2 / 2 - 20);
+                    ctx2.beginPath(); ctx2.arc(x, y, 5, 0, Math.PI * 2); ctx2.fillStyle = v.color2 || '#1db954'; ctx2.fill();
+                    ctx2.beginPath(); ctx2.arc(x, y, 3, 0, Math.PI * 2); ctx2.fillStyle = '#fff'; ctx2.fill();
+                });
+            }
+            // Stats
+            const allBPM = vibeHistory.map(v => v.bpm || 120);
+            document.getElementById('stat-avg-bpm').textContent = Math.round(allBPM.reduce((a, b) => a + b, 0) / allBPM.length);
+            const allTags = vibeHistory.flatMap(v => v.mood_tags || []);
+            const tagCount = {}; allTags.forEach(t => tagCount[t] = (tagCount[t] || 0) + 1);
+            const topTag = Object.entries(tagCount).sort((a, b) => b[1] - a[1])[0];
+            document.getElementById('stat-common-mood').textContent = topTag ? topTag[0] : '—';
+            document.getElementById('stat-highest-energy').textContent = Math.max(...vibeHistory.map(v => v.energy || 0)) + '%';
+        }
+
+        // ==================== PLAYLIST ====================
+        function renderPlaylist() {
+            const list = document.getElementById('playlist-list');
+            if (vibeHistory.length === 0) { list.innerHTML = '<div class="empty-state"><div class="icon">🎵</div><p>No vibes yet. Go check your vibe!</p></div>'; return; }
+            list.innerHTML = vibeHistory.map((v, i) => `
+    <div class="playlist-item" onclick="playFromPlaylist(${i})">
+      <div class="playlist-thumb" style="background:linear-gradient(135deg,${v.color1 || '#1db954'},${v.color2 || '#191414'})">${v.emoji || '🎵'}</div>
+      <div class="playlist-info"><div class="playlist-title">${v.title || 'Vibe'}</div><div class="playlist-genre">${v.genre || ''}</div></div>
+      <div class="playlist-bpm">${v.bpm || 120} BPM</div>
+      <div class="playlist-energy-badge" style="background:${v.color2 || '#1db954'}">${v.energy || 50}%</div>
+    </div>`).reverse().join('');
+        }
+        function playFromPlaylist(i) { currentVibe = vibeHistory[i]; loadIntoPlayer(currentVibe); updateAccentColor(currentVibe.color2 || currentVibe.color1); particlesBPM = currentVibe.bpm || 80; }
+        function clearPlaylist() { if (!confirm('Clear all saved vibes?')) return; vibeHistory = []; localStorage.setItem('vibeHistory', '[]'); renderPlaylist(); showToast('Playlist cleared'); }
+
+        // ==================== VIBE PREDICTOR (TF.js) ====================
+        async function runPredictor() {
+            const el = document.getElementById('predictor-content');
+            if (vibeHistory.length < 3) {
+                el.innerHTML = '<div class="training-msg"><span class="brain">🧠</span>Generate at least 3 vibes to unlock predictions<br><small style="color:var(--text-muted)">You have ' + vibeHistory.length + ' vibe(s)</small></div>';
+                return;
+            }
+            el.innerHTML = '<div class="training-msg"><span class="brain">🧠</span>Training your vibe model...</div>';
+            await new Promise(r => setTimeout(r, 500));
+            try {
+                const moodScores = vibeHistory.map(v => v.mood_score || 0);
+                const energies = vibeHistory.map(v => (v.energy || 50) / 100);
+                const xs = tf.tensor2d(moodScores, [moodScores.length, 1]);
+                const ys = tf.tensor2d(energies, [energies.length, 1]);
+                const model = tf.sequential();
+                model.add(tf.layers.dense({ units: 8, inputShape: [1], activation: 'relu' }));
+                model.add(tf.layers.dense({ units: 1, activation: 'sigmoid' }));
+                model.compile({ optimizer: tf.train.adam(0.05), loss: 'meanSquaredError' });
+                await model.fit(xs, ys, { epochs: 100, verbose: 0 });
+                const avgMood = moodScores.reduce((a, b) => a + b, 0) / moodScores.length;
+                const pred = model.predict(tf.tensor2d([avgMood], [1, 1]));
+                const predVal = Math.round(pred.dataSync()[0] * 100);
+                xs.dispose(); ys.dispose(); pred.dispose(); model.dispose();
+                el.innerHTML = `
+      <div class="gauge-wrap"><div class="gauge-container"><canvas id="gauge-canvas" width="220" height="220"></canvas><div class="gauge-text"><div class="gauge-val">${predVal}%</div><div class="gauge-label">Energy</div></div></div></div>
+      <p style="text-align:center;color:var(--text-dim);font-size:16px;margin-bottom:32px">Your next vibe is predicted to be <strong style="color:var(--accent)">${predVal}%</strong> energetic</p>
+      <div class="chart-container"><div class="chart-title">Training Data</div>
+      <table class="training-table"><thead><tr><th>Vibe #</th><th>Mood Score</th><th>Energy</th></tr></thead><tbody>
+      ${vibeHistory.map((v, i) => `<tr><td>${i + 1}</td><td>${(v.mood_score || 0).toFixed(2)}</td><td>${v.energy || 50}%</td></tr>`).join('')}
+      </tbody></table></div>`;
+                drawGauge(predVal);
+            } catch (e) { el.innerHTML = '<div class="training-msg"><span class="brain">❌</span>Model training failed: ' + e.message + '</div>'; }
+        }
+
+        function drawGauge(val) {
+            const c = document.getElementById('gauge-canvas');
+            if (!c) return;
+            const ctx = c.getContext('2d');
+            const cx = 110, cy = 110, r = 90;
+            ctx.clearRect(0, 0, 220, 220);
+            // Background arc
+            ctx.beginPath(); ctx.arc(cx, cy, r, 0.75 * Math.PI, 2.25 * Math.PI); ctx.strokeStyle = '#333'; ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.stroke();
+            // Value arc
+            const endAngle = 0.75 * Math.PI + (val / 100) * 1.5 * Math.PI;
+            const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#1db954';
+            ctx.beginPath(); ctx.arc(cx, cy, r, 0.75 * Math.PI, endAngle); ctx.strokeStyle = accent; ctx.lineWidth = 14; ctx.lineCap = 'round'; ctx.stroke();
+        }
+
+        // ==================== SETTINGS ====================
+        function loadSettings() {
+            const key = localStorage.getItem('claudeApiKey') || '';
+            document.getElementById('api-key-input').value = key;
+            const theme = localStorage.getItem('theme') || 'dark';
+            document.getElementById('toggle-theme').classList.toggle('on', theme === 'light');
+            const showMeter = localStorage.getItem('showMoodMeter') !== 'false';
+            document.getElementById('toggle-meter').classList.toggle('on', showMeter);
+        }
+        function saveApiKey() { localStorage.setItem('claudeApiKey', document.getElementById('api-key-input').value); showToast('API key saved!'); }
+        function toggleTheme() {
+            const el = document.getElementById('toggle-theme');
+            el.classList.toggle('on');
+            document.body.classList.toggle('light-mode', el.classList.contains('on'));
+            localStorage.setItem('theme', el.classList.contains('on') ? 'light' : 'dark');
+        }
+        function toggleMeter() {
+            const el = document.getElementById('toggle-meter');
+            el.classList.toggle('on');
+            const show = el.classList.contains('on');
+            localStorage.setItem('showMoodMeter', show);
+            document.getElementById('mood-meter-home').style.display = show ? 'block' : 'none';
+        }
+        function clearAllHistory() { if (!confirm('Are you sure? This will delete everything.')) return; localStorage.clear(); vibeHistory = []; showToast('All data cleared!'); }
+
+        // ==================== ACCENT COLOR ====================
+        function updateAccentColor(color) { document.documentElement.style.setProperty('--accent', color || '#1db954'); }
+
+        // ==================== TOAST ====================
+        function showToast(msg) {
+            const existing = document.querySelector('.toast');
+            if (existing) existing.remove();
+            const t = document.createElement('div');
+            t.className = 'toast'; t.textContent = msg;
+            document.body.appendChild(t);
+            setTimeout(() => t.remove(), 3000);
+        }
+
+        // ==================== STREAK ====================
+        function updateStreak() {
+            const today = new Date().toDateString();
+            const lastDate = localStorage.getItem('lastVibeDate');
+            let streak = parseInt(localStorage.getItem('vibeStreak') || '0');
+            if (lastDate === today) { /* already checked today */ }
+            else if (lastDate === new Date(Date.now() - 86400000).toDateString()) { streak++; }
+            else { streak = 1; }
+            localStorage.setItem('lastVibeDate', today);
+            localStorage.setItem('vibeStreak', streak);
+            showStreak(streak);
+        }
+        function showStreak(count) {
+            const badge = document.getElementById('streak-badge');
+            if (count > 0) { badge.style.display = 'inline-flex'; document.getElementById('streak-count').textContent = count; }
+        }
+
+        // ==================== VIBE BATTLE ====================
+        async function generateBattle(text, score) {
+            const sec = document.getElementById('battle-section');
+            sec.style.display = 'block';
+            const wrap = document.getElementById('battle-wrap');
+            wrap.innerHTML = '<div style="text-align:center;width:100%;color:var(--text-muted)">Generating battle vibes...</div>';
+            const v1 = await callClaudeAPI(text + ' (generate an alternative interpretation)', score * 0.8);
+            const v2 = await callClaudeAPI(text + ' (generate a contrasting interpretation)', score * -0.5);
+            if (!v1 || !v2) { sec.style.display = 'none'; return; }
+            battleVibes = [v1, v2];
+            wrap.innerHTML = `
+    <div class="battle-card" onclick="battleVote(0)">
+      <div style="font-size:48px;margin-bottom:12px">${v1.emoji || '🎵'}</div>
+      <div style="font-size:18px;font-weight:700;margin-bottom:4px">${v1.title || 'Vibe A'}</div>
+      <div style="font-size:13px;color:var(--text-dim)">${v1.genre || ''} • ${v1.bpm || 120} BPM</div>
+      <div style="margin-top:8px;font-size:12px;color:var(--text-muted)">${v1.description || ''}</div>
+    </div>
+    <div class="battle-vs">VS</div>
+    <div class="battle-card" onclick="battleVote(1)">
+      <div style="font-size:48px;margin-bottom:12px">${v2.emoji || '🎵'}</div>
+      <div style="font-size:18px;font-weight:700;margin-bottom:4px">${v2.title || 'Vibe B'}</div>
+      <div style="font-size:13px;color:var(--text-dim)">${v2.genre || ''} • ${v2.bpm || 120} BPM</div>
+      <div style="margin-top:8px;font-size:12px;color:var(--text-muted)">${v2.description || ''}</div>
+    </div>`;
+        }
+        function battleVote(idx) {
+            document.querySelectorAll('.battle-card')[idx].classList.add('winner');
+            const winner = battleVibes[idx];
+            winner.mood_score = currentMoodScore;
+            winner.timestamp = Date.now();
+            vibeHistory.push(winner);
+            localStorage.setItem('vibeHistory', JSON.stringify(vibeHistory));
+            showToast('🏆 ' + (winner.title || 'Vibe') + ' wins!');
+        }
+
+        // ==================== EXPORT PLAYLIST ====================
+        function exportPlaylist() {
+            if (vibeHistory.length === 0) { showToast('No vibes to export'); return; }
+            let txt = '🎵 SOULTRACK — My Vibes Playlist\n' + '='.repeat(40) + '\n\n';
+            vibeHistory.forEach((v, i) => {
+                txt += `#${i + 1} — ${v.title || 'Untitled'}\n   Genre: ${v.genre || '?'} | BPM: ${v.bpm || '?'} | Energy: ${v.energy || '?'}%\n   ${v.description || ''}\n   Tags: ${(v.mood_tags || []).join(', ')}\n\n`;
+            });
+            txt += '\nExported from SOULTRACK Vibe Check Machine';
+            const blob = new Blob([txt], { type: 'text/plain' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'soultrack-vibes.txt'; a.click();
+            showToast('Playlist exported!');
+        }
+
+        // ==================== PARTICLES ====================
+        const particlesCanvas = document.getElementById('particles-canvas');
+        const pCtx = particlesCanvas.getContext('2d');
+        let particles = [];
+        function resizeParticles() { particlesCanvas.width = window.innerWidth - 240; particlesCanvas.height = window.innerHeight - 80; }
+        window.addEventListener('resize', resizeParticles);
+        resizeParticles();
+        function createParticles() {
+            particles = [];
+            for (let i = 0; i < 50; i++) {
+                particles.push({ x: Math.random() * particlesCanvas.width, y: Math.random() * particlesCanvas.height, r: 1 + Math.random() * 2.5, vx: (Math.random() - 0.5) * 0.5, vy: (Math.random() - 0.5) * 0.5, alpha: 0.1 + Math.random() * 0.3 });
+            }
+        }
+        createParticles();
+        function animateParticles() {
+            pCtx.clearRect(0, 0, particlesCanvas.width, particlesCanvas.height);
+            const speed = (particlesBPM / 120);
+            const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#1db954';
+            particles.forEach(p => {
+                p.x += p.vx * speed; p.y += p.vy * speed;
+                if (p.x < 0 || p.x > particlesCanvas.width) p.vx *= -1;
+                if (p.y < 0 || p.y > particlesCanvas.height) p.vy *= -1;
+                pCtx.beginPath(); pCtx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+                pCtx.fillStyle = accent; pCtx.globalAlpha = p.alpha; pCtx.fill(); pCtx.globalAlpha = 1;
+            });
+            requestAnimationFrame(animateParticles);
+        }
+        animateParticles();
+
+        // ==================== VIBE OF THE DAY ====================
+        function vibeOfTheDay() {
+            const days = ['Chill Sunday', 'Motivation Monday', 'Groove Tuesday', 'Midweek Mellow', 'Throwback Thursday', 'Feel-Good Friday', 'Party Saturday'];
+            const today = new Date().getDay();
+            const greeting = document.querySelector('.greeting-sub');
+            if (greeting) greeting.textContent = `Today\'s vibe: ${days[today]} ✦ Type how you\'re feeling!`;
+        }
+
+        // ==================== INIT ====================
+        function init() {
+            // Load theme
+            if (localStorage.getItem('theme') === 'light') document.body.classList.add('light-mode');
+            // Load mood meter pref
+            if (localStorage.getItem('showMoodMeter') === 'false') document.getElementById('mood-meter-home').style.display = 'none';
+            // Show streak
+            const streak = parseInt(localStorage.getItem('vibeStreak') || '0');
+            if (streak > 0) showStreak(streak);
+            // Vibe of the day
+            vibeOfTheDay();
+            // Load last vibe into player
+            if (vibeHistory.length > 0) {
+                currentVibe = vibeHistory[vibeHistory.length - 1];
+                loadIntoPlayer(currentVibe);
+                updateAccentColor(currentVibe.color2 || currentVibe.color1);
+                particlesBPM = currentVibe.bpm || 80;
+                stopPlayer();
+            }
+        }
+        init();
+    </script>
+</body>
+
+</html>
