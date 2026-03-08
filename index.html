@@ -9,6 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap"
         rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+    <script src="https://www.youtube.com/iframe_api"></script>
     <style>
         * {
             margin: 0;
@@ -871,6 +872,19 @@
             font-weight: 600
         }
 
+        /* HIDDEN YOUTUBE PLAYER */
+        #yt-player-wrap {
+            position: fixed;
+            bottom: 80px;
+            right: 0;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            opacity: 0;
+            pointer-events: none;
+            z-index: -1
+        }
+
         .player-empty {
             color: var(--text-muted);
             font-size: 13px
@@ -1201,6 +1215,11 @@
         </div>
     </div><!-- end app -->
 
+    <!-- HIDDEN YOUTUBE PLAYER -->
+    <div id="yt-player-wrap">
+        <div id="yt-player"></div>
+    </div>
+
     <script>
         // ==================== STATE ====================
         let currentPage = 'home';
@@ -1213,6 +1232,71 @@
         let eqInterval = null;
         let particlesBPM = 80;
         let battleVibes = [];
+        let ytPlayer = null;
+        let ytReady = false;
+        let ytProgressInterval = null;
+
+        // ==================== YOUTUBE IFRAME API ====================
+        function onYouTubeIframeAPIReady() {
+            ytPlayer = new YT.Player('yt-player', {
+                height: '1', width: '1',
+                playerVars: { autoplay: 0, controls: 0, modestbranding: 1, rel: 0, showinfo: 0 },
+                events: {
+                    onReady: function () { ytReady = true; },
+                    onStateChange: function (e) {
+                        if (e.data === YT.PlayerState.PLAYING) {
+                            playerPlaying = true;
+                            document.getElementById('player-play-btn').textContent = '⏸';
+                            startEqualizer();
+                            startYTProgress();
+                        } else if (e.data === YT.PlayerState.PAUSED) {
+                            playerPlaying = false;
+                            document.getElementById('player-play-btn').textContent = '▶';
+                            stopEqualizer();
+                            clearInterval(ytProgressInterval);
+                        } else if (e.data === YT.PlayerState.ENDED) {
+                            playerPlaying = false;
+                            document.getElementById('player-play-btn').textContent = '▶';
+                            stopEqualizer();
+                            clearInterval(ytProgressInterval);
+                            document.getElementById('progress-fill').style.width = '100%';
+                            // Auto-play next vibe
+                            playerNext();
+                        }
+                    }
+                }
+            });
+        }
+
+        function startYTProgress() {
+            clearInterval(ytProgressInterval);
+            ytProgressInterval = setInterval(() => {
+                if (ytPlayer && ytPlayer.getCurrentTime && ytPlayer.getDuration) {
+                    const cur = ytPlayer.getCurrentTime();
+                    const dur = ytPlayer.getDuration();
+                    if (dur > 0) {
+                        document.getElementById('progress-fill').style.width = ((cur / dur) * 100) + '%';
+                    }
+                }
+            }, 500);
+        }
+
+        async function searchAndPlayYouTube(query) {
+            if (!ytReady || !ytPlayer) {
+                // Fallback: try again in 1s if YT API isn't ready yet
+                setTimeout(() => searchAndPlayYouTube(query), 1000);
+                return;
+            }
+            try {
+                // Use YouTube's internal search via embed — load search results as playlist
+                // This uses the loadPlaylist method with a search query
+                ytPlayer.loadPlaylist({ list: query, listType: 'search' });
+                ytPlayer.setVolume(80);
+            } catch (e) {
+                console.log('YouTube search failed:', e);
+                showToast('🎵 Could not load music, playing UI only');
+            }
+        }
 
         // ==================== MOOD KEYWORDS ====================
         const moodKeywords = {
@@ -1276,7 +1360,7 @@
         async function callClaudeAPI(userText, moodScore) {
             const apiKey = localStorage.getItem('claudeApiKey') || '';
             if (!apiKey) { showToast('⚠️ Enter your Claude API key in Settings first!'); return null; }
-            const prompt = `You are a creative AI that generates music vibes. The user said: "${userText}". Their mood score is ${moodScore.toFixed(2)} on a scale of -1 (very negative) to +1 (very positive). Generate a unique vibe as JSON with these fields: title (creative vibe name), genre (music genre), bpm (number 60-180), energy (number 0-100), color1 (hex), color2 (hex), emoji (single emoji), description (2 sentences max), mood_tags (array of 3-4 mood tags). Return ONLY valid JSON, no markdown.`;
+            const prompt = `You are a creative AI that generates music vibes. The user said: "${userText}". Their mood score is ${moodScore.toFixed(2)} on a scale of -1 (very negative) to +1 (very positive). Generate a unique vibe as JSON with these fields: title (creative vibe name), genre (music genre), bpm (number 60-180), energy (number 0-100), color1 (hex), color2 (hex), emoji (single emoji), description (2 sentences max), mood_tags (array of 3-4 mood tags), youtube_search (a YouTube search query to find a matching song or playlist, e.g. "arijit singh sad songs" or "upbeat party hits 2024" or "lofi hip hop chill beats" — pick something that matches the mood and genre). Return ONLY valid JSON, no markdown.`;
             try {
                 const resp = await fetch('https://api.anthropic.com/v1/messages', {
                     method: 'POST',
@@ -1314,7 +1398,7 @@
             vibeHistory.push(vibe);
             localStorage.setItem('vibeHistory', JSON.stringify(vibeHistory));
             updateAccentColor(vibe.color2 || vibe.color1);
-            loadIntoPlayer(vibe);
+            loadIntoPlayer(vibe, true);
             updateStreak();
             particlesBPM = vibe.bpm || 80;
             // Generate battle vibes after first vibe
@@ -1339,36 +1423,58 @@
         }
 
         // ==================== PLAYER BAR ====================
-        function loadIntoPlayer(v) {
+        function loadIntoPlayer(v, autoPlay) {
             const left = document.getElementById('player-left');
             left.innerHTML = `<div class="player-thumb" style="background:linear-gradient(135deg,${v.color1 || '#1db954'},${v.color2 || '#191414'})">${v.emoji || '🎵'}</div><div><div class="player-title">${v.title || 'Vibe'}</div><div class="player-genre">${v.genre || ''}</div></div>`;
             document.getElementById('player-bpm-display').textContent = (v.bpm || 120) + ' BPM';
-            startPlayer();
+            document.getElementById('progress-fill').style.width = '0%';
+            // Play matching music via YouTube
+            if (autoPlay && v.youtube_search) {
+                searchAndPlayYouTube(v.youtube_search);
+            } else if (autoPlay && v.genre) {
+                // Fallback: search by genre + mood tags
+                const q = (v.mood_tags || []).slice(0, 2).join(' ') + ' ' + v.genre + ' songs';
+                searchAndPlayYouTube(q);
+            }
         }
 
         function startPlayer() {
-            playerPlaying = true;
-            document.getElementById('player-play-btn').textContent = '⏸';
-            progressVal = 0;
-            clearInterval(playerInterval);
-            playerInterval = setInterval(() => {
-                progressVal += 0.3;
-                if (progressVal > 100) progressVal = 0;
-                document.getElementById('progress-fill').style.width = progressVal + '%';
-            }, 100);
-            startEqualizer();
+            if (ytReady && ytPlayer && ytPlayer.playVideo) {
+                ytPlayer.playVideo();
+            }
+            // State change handled by YT onStateChange callback
         }
 
         function stopPlayer() {
-            playerPlaying = false;
-            document.getElementById('player-play-btn').textContent = '▶';
-            clearInterval(playerInterval);
-            stopEqualizer();
+            if (ytReady && ytPlayer && ytPlayer.pauseVideo) {
+                ytPlayer.pauseVideo();
+            }
         }
 
-        function playerToggle() { playerPlaying ? stopPlayer() : (currentVibe && startPlayer()); }
-        function playerPrev() { if (vibeHistory.length > 1) { const i = Math.max(0, vibeHistory.indexOf(currentVibe) - 1); currentVibe = vibeHistory[i]; loadIntoPlayer(currentVibe); displayVibeCard(currentVibe); } }
-        function playerNext() { if (vibeHistory.length > 1) { const i = Math.min(vibeHistory.length - 1, (vibeHistory.indexOf(currentVibe) || 0) + 1); currentVibe = vibeHistory[i]; loadIntoPlayer(currentVibe); displayVibeCard(currentVibe); } }
+        function playerToggle() {
+            if (playerPlaying) { stopPlayer(); }
+            else if (currentVibe) { startPlayer(); }
+        }
+        function playerPrev() {
+            if (ytReady && ytPlayer && ytPlayer.previousVideo) {
+                ytPlayer.previousVideo();
+            } else if (vibeHistory.length > 1) {
+                const i = Math.max(0, vibeHistory.indexOf(currentVibe) - 1);
+                currentVibe = vibeHistory[i];
+                loadIntoPlayer(currentVibe, true);
+                displayVibeCard(currentVibe);
+            }
+        }
+        function playerNext() {
+            if (ytReady && ytPlayer && ytPlayer.nextVideo) {
+                ytPlayer.nextVideo();
+            } else if (vibeHistory.length > 1) {
+                const i = Math.min(vibeHistory.length - 1, (vibeHistory.indexOf(currentVibe) || 0) + 1);
+                currentVibe = vibeHistory[i];
+                loadIntoPlayer(currentVibe, true);
+                displayVibeCard(currentVibe);
+            }
+        }
 
         // ==================== EQUALIZER ====================
         function startEqualizer() {
@@ -1456,7 +1562,7 @@
       <div class="playlist-energy-badge" style="background:${v.color2 || '#1db954'}">${v.energy || 50}%</div>
     </div>`).reverse().join('');
         }
-        function playFromPlaylist(i) { currentVibe = vibeHistory[i]; loadIntoPlayer(currentVibe); updateAccentColor(currentVibe.color2 || currentVibe.color1); particlesBPM = currentVibe.bpm || 80; }
+        function playFromPlaylist(i) { currentVibe = vibeHistory[i]; loadIntoPlayer(currentVibe, true); updateAccentColor(currentVibe.color2 || currentVibe.color1); particlesBPM = currentVibe.bpm || 80; }
         function clearPlaylist() { if (!confirm('Clear all saved vibes?')) return; vibeHistory = []; localStorage.setItem('vibeHistory', '[]'); renderPlaylist(); showToast('Playlist cleared'); }
 
         // ==================== VIBE PREDICTOR (TF.js) ====================
@@ -1661,10 +1767,9 @@
             // Load last vibe into player
             if (vibeHistory.length > 0) {
                 currentVibe = vibeHistory[vibeHistory.length - 1];
-                loadIntoPlayer(currentVibe);
+                loadIntoPlayer(currentVibe, false);
                 updateAccentColor(currentVibe.color2 || currentVibe.color1);
                 particlesBPM = currentVibe.bpm || 80;
-                stopPlayer();
             }
         }
         init();
