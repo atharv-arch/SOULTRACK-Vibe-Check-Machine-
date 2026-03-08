@@ -1359,7 +1359,7 @@
         // ==================== CLAUDE API ====================
         async function callClaudeAPI(userText, moodScore) {
             const apiKey = localStorage.getItem('claudeApiKey') || '';
-            if (!apiKey) { showToast('⚠️ Enter your Claude API key in Settings first!'); return null; }
+            if (!apiKey) return null; // No key = use local generator
             const prompt = `You are a creative AI that generates music vibes. The user said: "${userText}". Their mood score is ${moodScore.toFixed(2)} on a scale of -1 (very negative) to +1 (very positive). Generate a unique vibe as JSON with these fields: title (creative vibe name), genre (music genre), bpm (number 60-180), energy (number 0-100), color1 (hex), color2 (hex), emoji (single emoji), description (2 sentences max), mood_tags (array of 3-4 mood tags), youtube_search (a YouTube search query to find a matching song or playlist, e.g. "arijit singh sad songs" or "upbeat party hits 2024" or "lofi hip hop chill beats" — pick something that matches the mood and genre). Return ONLY valid JSON, no markdown.`;
             try {
                 const resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -1378,6 +1378,61 @@
             } catch (e) { showToast('❌ API call failed: ' + e.message); return null; }
         }
 
+        // ==================== OFFLINE VIBE GENERATOR ====================
+        const vibeTemplates = [
+            // Very Positive (0.6 to 1.0)
+            { minScore: 0.6, title: 'Golden Hour Euphoria', genre: 'Pop / Dance', bpm: 128, energy: 92, color1: '#FFD700', color2: '#FF6B35', emoji: '☀️', description: 'Pure sunshine energy radiating through every beat. This vibe is electric and unstoppable.', mood_tags: ['euphoric', 'energetic', 'radiant', 'alive'], youtube_search: 'happy upbeat pop songs 2024 playlist' },
+            { minScore: 0.6, title: 'Neon Paradise', genre: 'EDM / Future Bass', bpm: 140, energy: 95, color1: '#00FF87', color2: '#60EFFF', emoji: '🌈', description: 'Colors exploding like confetti in the sky. Maximum energy, zero limits.', mood_tags: ['ecstatic', 'wild', 'colorful', 'free'], youtube_search: 'best EDM party songs energy boost' },
+            { minScore: 0.6, title: 'Serotonin Rush', genre: 'Indie Pop', bpm: 122, energy: 88, color1: '#FF69B4', color2: '#FFB347', emoji: '✨', description: 'That feeling when everything clicks into place perfectly. Happiness in audio form.', mood_tags: ['joyful', 'bright', 'uplifting', 'carefree'], youtube_search: 'feel good indie pop songs happy vibes' },
+            { minScore: 0.6, title: 'Bollywood Blast', genre: 'Bollywood / Party', bpm: 135, energy: 94, color1: '#FF1493', color2: '#FFD700', emoji: '💃', description: 'High-energy Bollywood beats that make you want to dance all night. Full party mode activated.', mood_tags: ['party', 'dance', 'celebratory', 'lit'], youtube_search: 'bollywood party songs 2024 dance hits' },
+            // Positive (0.3 to 0.6)
+            { minScore: 0.3, title: 'Velvet Sunset Drive', genre: 'R&B / Soul', bpm: 95, energy: 65, color1: '#E040FB', color2: '#FF6F00', emoji: '🌅', description: 'Smooth vibes for a cruising through golden hour. Warm and soulful.', mood_tags: ['smooth', 'warm', 'soulful', 'content'], youtube_search: 'smooth R&B soul playlist chill vibes' },
+            { minScore: 0.3, title: 'Cloud Nine Drifter', genre: 'Dream Pop', bpm: 108, energy: 60, color1: '#CE93D8', color2: '#90CAF9', emoji: '☁️', description: 'Floating above the world on layers of dreamy synths. Effortlessly blissful.', mood_tags: ['dreamy', 'peaceful', 'hopeful', 'light'], youtube_search: 'dream pop atmospheric chill playlist' },
+            { minScore: 0.3, title: 'Sunlit Chai Morning', genre: 'Acoustic / Indian', bpm: 100, energy: 55, color1: '#FFB74D', color2: '#8D6E63', emoji: '🍵', description: 'Warm acoustic melodies like morning chai on a sunny balcony. Simple and beautiful.', mood_tags: ['warm', 'grateful', 'gentle', 'cozy'], youtube_search: 'acoustic morning indian chill songs' },
+            { minScore: 0.3, title: 'Weekend Groove', genre: 'Funk / Pop', bpm: 115, energy: 72, color1: '#26C6DA', color2: '#AB47BC', emoji: '🎸', description: 'Funky rhythms that put a spring in your step. Good vibes only.', mood_tags: ['groovy', 'fun', 'upbeat', 'positive'], youtube_search: 'funky feel good songs weekend playlist' },
+            // Neutral (-0.3 to 0.3)
+            { minScore: -0.3, title: 'Midnight Thoughts', genre: 'Lofi Hip Hop', bpm: 85, energy: 40, color1: '#5C6BC0', color2: '#263238', emoji: '🌙', description: 'Late night contemplation over gentle beats. Perfect for thinking deep thoughts.', mood_tags: ['reflective', 'calm', 'thoughtful', 'chill'], youtube_search: 'lofi hip hop chill study beats' },
+            { minScore: -0.3, title: 'Urban Wanderer', genre: 'Trip Hop', bpm: 90, energy: 45, color1: '#78909C', color2: '#37474F', emoji: '🏙️', description: 'Walking through city streets with music in your ears. Neutral but aware.', mood_tags: ['chill', 'urban', 'contemplative', 'neutral'], youtube_search: 'trip hop downtempo city night music' },
+            { minScore: -0.3, title: 'Monsoon Chai', genre: 'Indian Lofi', bpm: 82, energy: 38, color1: '#607D8B', color2: '#455A64', emoji: '🌧️', description: 'Rain tapping on windows while you sip chai. Cozy and introspective.', mood_tags: ['cozy', 'rainy', 'introspective', 'mellow'], youtube_search: 'indian lofi monsoon rainy day chill' },
+            { minScore: -0.3, title: 'Ambient Focus', genre: 'Ambient / Electronic', bpm: 72, energy: 30, color1: '#4DB6AC', color2: '#004D40', emoji: '🧘', description: 'Minimal textures designed for deep concentration. Zen-like focus energy.', mood_tags: ['focused', 'minimal', 'zen', 'steady'], youtube_search: 'ambient focus music deep concentration' },
+            // Negative (-0.6 to -0.3)
+            { minScore: -0.6, title: 'Fading Polaroids', genre: 'Indie / Alternative', bpm: 78, energy: 35, color1: '#8D6E63', color2: '#4E342E', emoji: '📸', description: 'Memories slipping through fingers like old photographs. Bittersweet nostalgia.', mood_tags: ['nostalgic', 'melancholy', 'wistful', 'tired'], youtube_search: 'sad indie songs melancholy playlist' },
+            { minScore: -0.6, title: 'Grey Skyline', genre: 'Post Rock', bpm: 70, energy: 28, color1: '#616161', color2: '#212121', emoji: '🌫️', description: 'Overcast emotions building slowly like distant thunder. Heavy but beautiful.', mood_tags: ['heavy', 'grey', 'somber', 'drained'], youtube_search: 'sad post rock atmospheric emotional' },
+            { minScore: -0.6, title: 'Tanha Raat', genre: 'Hindi Sad', bpm: 75, energy: 30, color1: '#7986CB', color2: '#283593', emoji: '💙', description: 'When the night feels too long and thoughts get heavy. Arijit Singh energy.', mood_tags: ['lonely', 'sad', 'emotional', 'heartbreak'], youtube_search: 'arijit singh sad songs heartbreak playlist' },
+            { minScore: -0.6, title: 'Burnout Station', genre: 'Slowcore', bpm: 68, energy: 22, color1: '#FF8A65', color2: '#BF360C', emoji: '🔥', description: 'Running on empty but still going. The sound of exhaustion meeting resilience.', mood_tags: ['exhausted', 'burnt', 'struggling', 'tired'], youtube_search: 'sad slow songs when you feel exhausted' },
+            // Very Negative (-1.0 to -0.6)
+            { minScore: -1.0, title: 'Void Walker', genre: 'Dark Ambient', bpm: 60, energy: 15, color1: '#311B92', color2: '#000000', emoji: '🕳️', description: 'Staring into the abyss and finding strange comfort there. Deep and dark.', mood_tags: ['dark', 'empty', 'intense', 'raw'], youtube_search: 'dark ambient sad emotional music' },
+            { minScore: -1.0, title: 'Storm Inside', genre: 'Metal / Rock', bpm: 155, energy: 85, color1: '#B71C1C', color2: '#1A1A1A', emoji: '⚡', description: 'Raw fury channeled into thundering riffs. Let the anger fuel you.', mood_tags: ['angry', 'fierce', 'rebellious', 'intense'], youtube_search: 'angry rock metal songs intense playlist' },
+            { minScore: -1.0, title: 'Silent Tears', genre: 'Piano / Classical', bpm: 65, energy: 18, color1: '#1A237E', color2: '#0D0D0D', emoji: '🥀', description: 'When words fail, music speaks. Hauntingly beautiful piano melodies for the soul.', mood_tags: ['heartbroken', 'grief', 'lonely', 'vulnerable'], youtube_search: 'sad piano music emotional crying playlist' },
+            { minScore: -1.0, title: 'Dard-e-Dil', genre: 'Hindi Ballad', bpm: 70, energy: 20, color1: '#4A148C', color2: '#12005E', emoji: '💔', description: 'Deep pain translated into soulful Hindi melodies. When the heart truly aches.', mood_tags: ['pain', 'heartbreak', 'emotional', 'deep'], youtube_search: 'hindi sad songs heartbreak emotional 2024' }
+        ];
+
+        function generateVibeLocally(userText, moodScore) {
+            // Filter templates by mood score range
+            const matching = vibeTemplates.filter(t => {
+                if (moodScore >= 0.6) return t.minScore >= 0.6;
+                if (moodScore >= 0.3) return t.minScore >= 0.3 && t.minScore < 0.6;
+                if (moodScore >= -0.3) return t.minScore >= -0.3 && t.minScore < 0.3;
+                if (moodScore >= -0.6) return t.minScore >= -0.6 && t.minScore < -0.3;
+                return t.minScore < -0.6;
+            });
+            // Pick a random template from the matching ones
+            const template = matching[Math.floor(Math.random() * matching.length)] || vibeTemplates[0];
+            // Slightly randomize bpm and energy for variety
+            return {
+                title: template.title,
+                genre: template.genre,
+                bpm: template.bpm + Math.floor(Math.random() * 10) - 5,
+                energy: Math.max(5, Math.min(100, template.energy + Math.floor(Math.random() * 10) - 5)),
+                color1: template.color1,
+                color2: template.color2,
+                emoji: template.emoji,
+                description: template.description,
+                mood_tags: template.mood_tags,
+                youtube_search: template.youtube_search
+            };
+        }
+
         // ==================== CHECK VIBE ====================
         async function checkVibe() {
             const input = document.getElementById('mood-input');
@@ -1387,9 +1442,13 @@
             btn.classList.add('loading'); btn.disabled = true;
             const score = calculateMoodScore(text);
             updateMoodDisplay(score);
-            const vibe = await callClaudeAPI(text, score);
+            // Try Claude API first, fall back to local generator
+            let vibe = await callClaudeAPI(text, score);
+            if (!vibe) {
+                vibe = generateVibeLocally(text, score);
+                showToast('🎵 Generated vibe locally — add API key in Settings for AI-powered vibes');
+            }
             btn.classList.remove('loading'); btn.disabled = false;
-            if (!vibe) return;
             vibe.mood_score = score;
             vibe.timestamp = Date.now();
             vibe.input = text;
